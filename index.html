@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <title>Lauluharjoitus - Sävelen tunnistus</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
+        .card { background: #1e1e1e; max-width: 500px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        button { background: #e50914; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button:hover { background: #b20710; }
+        .controls { margin: 15px 0; text-align: left; display: inline-block; }
+        label { display: block; margin: 8px 0; }
+        #feedback { font-size: 24px; font-weight: bold; margin-top: 20px; padding: 15px; border-radius: 8px; background: #333; }
+        .match { background: #2e7d32 !important; color: white; } /* Vihreä kun osuu kohdalleen */
+        .too-low { background: #c62828 !important; } /* Punainen kun liian matala */
+        .too-high { background: #ef6c00 !important; } /* Oranssi kun liian korkea */
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Laulutreeni: Osuuko ääni säveleen?</h2>
+    
+    <button onclick="playTargetNote()">1. Soita Pianon Sävel (A3 / 220Hz)</button>
+    <button onclick="startListening()">2. Käynnistä Mikrofoni</button>
+
+    <div class="controls">
+        <label>Äänenvoimakkuus: 
+            <input type="range" id="volume" min="0" max="1" step="0.1" value="0.5">
+        </label>
+        <label>Sävelen kesto (sekuntia): 
+            <input type="number" id="duration" min="1" max="10" value="4">
+        </label>
+    </div>
+
+    <div id="feedback">Paina "Käynnistä Mikrofoni" ja laula...</div>
+</div>
+
+<script>
+let audioCtx;
+let targetFreq = 220.00; // A-nuotti (matalahko miesten laulualalle sopiva pohjasävel)
+
+function playTargetNote() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+    
+    let vol = parseFloat(document.getElementById('volume').value);
+    let dur = parseFloat(document.getElementById('duration').value);
+    
+    osc.type = 'triangle'; // Pehmeä, pianomainen ääni
+    osc.frequency.setValueAtTime(targetFreq, audioCtx.currentTime);
+    
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+}
+
+async function startListening() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+
+        const buffer = new Float32Array(analyser.fftSize);
+        
+        function checkPitch() {
+            analyser.getFloatTimeDomainData(buffer);
+            let userFreq = autoCorrelate(buffer, audioCtx.sampleRate);
+            
+            let feedbackEl = document.getElementById('feedback');
+            
+            if (userFreq !== -1) {
+                let diff = userFreq - targetFreq;
+                
+                if (Math.abs(diff) < 5) {
+                    feedbackEl.innerText = "TÄYDELLINEN OSUMA! (Osuit säveleen)";
+                    feedbackEl.className = "match";
+                } else if (diff < 0) {
+                    feedbackEl.innerText = "Liian matala ääni – Nosta ylemmäs!";
+                    feedbackEl.className = "too-low";
+                } else {
+                    feedbackEl.innerText = "Liian korkea ääni – Laske alemmas!";
+                    feedbackEl.className = "too-high";
+                }
+            }
+            requestAnimationFrame(checkPitch);
+        }
+        checkPitch();
+    } catch (err) {
+        alert("Mikrofonin käyttö estetty tai ei saada yhteyttä.");
+    }
+}
+
+// Yksinkertainen taajuuden tunnistusalgoritmi (Autocorrelation)
+function autoCorrelate(buf, sampleRate) {
+    let SIZE = buf.length;
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) {
+        let val = buf[i];
+        rms += val * val;
+    }
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1; // Ei riittävästi ääntä / hiljaisuus
+
+    let r1 = 0, r2 = SIZE - 1, thres = 0.2;
+    for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+    }
+    for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+    }
+
+    buf = buf.slice(r1, r2);
+    SIZE = buf.length;
+
+    let c = new Array(SIZE).fill(0);
+    for (let i = 0; i < SIZE; i++) {
+        for (let j = 0; j < SIZE - i; j++) {
+            c[i] = c[i] + buf[j] * buf[j + i];
+        }
+    }
+
+    let d = 0; while (c[d] > c[d + 1]) d++;
+    let maxval = -1, maxpos = -1;
+    for (let i = d; i < SIZE; i++) {
+        if (c[i] > maxval) {
+            maxval = c[i];
+            maxpos = i;
+        }
+    }
+    let T0 = maxpos;
+    return sampleRate / T0;
+}
+</script>
+
+</body>
+</html>
