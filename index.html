@@ -2,64 +2,133 @@
 <html lang="fi">
 <head>
     <meta charset="UTF-8">
-    <title>Lauluharjoitus - Sävelen tunnistus</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laulutreeni - Selkeät Nuottirajat</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
+        body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 15px; margin: 0; }
         .card { background: #1e1e1e; max-width: 500px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        button { background: #e50914; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button { background: #e50914; color: white; border: none; padding: 12px 18px; font-size: 15px; border-radius: 6px; cursor: pointer; margin: 5px; font-weight: bold; }
         button:hover { background: #b20710; }
-        .controls { margin: 15px 0; text-align: left; display: inline-block; }
-        label { display: block; margin: 8px 0; }
-        #feedback { font-size: 24px; font-weight: bold; margin-top: 20px; padding: 15px; border-radius: 8px; background: #333; }
-        .match { background: #2e7d32 !important; color: white; } /* Vihreä kun osuu kohdalleen */
-        .too-low { background: #c62828 !important; } /* Punainen kun liian matala */
-        .too-high { background: #ef6c00 !important; } /* Oranssi kun liian korkea */
+        .exercise-btn { background: #2a2a2a; border: 1px solid #444; color: #fff; display: block; width: 100%; margin: 8px 0; text-align: left; padding: 12px; border-radius: 8px; box-sizing: border-box; }
+        .exercise-btn:hover { background: #3a3a3a; border-color: #00e5ff; }
+        
+        /* LAULUNÄKYMÄ & VISUALISOINTI */
+        .visualizer-box { background: #262626; border: 2px solid #00e5ff; border-radius: 12px; padding: 15px; margin: 20px 0; }
+        .target-heading { font-size: 22px; font-weight: bold; color: #00e5ff; margin-bottom: 10px; }
+        
+        .tuner-container { position: relative; width: 100%; height: 60px; background: #111; border-radius: 30px; margin: 10px 0; overflow: hidden; border: 1px solid #555; }
+        .target-zone { position: absolute; left: 40%; width: 20%; height: 100%; background: rgba(76, 175, 80, 0.25); border-left: 2px dashed #4caf50; border-right: 2px dashed #4caf50; }
+        .center-line { position: absolute; left: 50%; width: 2px; height: 100%; background: rgba(255,255,255,0.3); }
+        #voice-dot { position: absolute; top: 10px; left: 50%; width: 40px; height: 40px; background: #00e5ff; border-radius: 50%; transform: translateX(-50%); transition: left 0.08s ease-out; box-shadow: 0 0 15px #00e5ff; z-index: 2; }
+        
+        .note-indicators { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; color: #fff; padding: 0 10px; }
+        .note-start { color: #ffca28; }
+        .note-end { color: #4caf50; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Laulutreeni: Osuuko ääni säveleen?</h2>
+    <h2>Laulutreeni</h2>
     
-    <button onclick="playTargetNote()">1. Soita Pianon Sävel (A3 / 220Hz)</button>
-    <button onclick="startListening()">2. Käynnistä Mikrofoni</button>
+    <button onclick="startListening()" style="background: #2e7d32; width: 100%; font-size: 16px;">🎤 Käynnistä Mikrofoni</button>
 
-    <div class="controls">
-        <label>Äänenvoimakkuus: 
-            <input type="range" id="volume" min="0" max="1" step="0.1" value="0.5">
-        </label>
-        <label>Sävelen kesto (sekuntia): 
-            <input type="number" id="duration" min="1" max="10" value="4">
-        </label>
+    <!-- PÄÄNÄKYMÄ LAULAISESSA (Nuotit & Pallo samassa paikassa) -->
+    <div class="visualizer-box">
+        <div style="font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Aktiivinen tavoite:</div>
+        <div class="target-heading" id="display-target-name">Valitse harjoitus alta</div>
+        
+        <!-- Mittari -->
+        <div class="tuner-container">
+            <div class="target-zone"></div>
+            <div class="center-line"></div>
+            <div id="voice-dot" style="display: none;"></div>
+        </div>
+        
+        <!-- Nuottirajat suoraan mittarin alla -->
+        <div class="note-indicators">
+            <span>Aloitus: <strong class="note-start" id="display-start-note">--</strong></span>
+            <span>Tavoite/Ylin: <strong class="note-end" id="display-end-note">--</strong></span>
+        </div>
     </div>
 
-    <div id="feedback">Paina "Käynnistä Mikrofoni" ja laula...</div>
+    <h3>Valitse Harjoitus:</h3>
+    
+    <button class="exercise-btn" onclick="playExercise('base')">
+        🎵 <strong>1. Matala Pohjaharmonia</strong><br>
+        <small style="color: #ccc;">Kohdenuotti: <strong>E3</strong> | Harmonia: <strong>B3</strong></small>
+    </button>
+    
+    <button class="exercise-btn" onclick="playExercise('glide')">
+        🌊 <strong>2. Äänen Liuku (Sireeni)</strong><br>
+        <small style="color: #ccc;">Aloitus: <strong>C3</strong> ➔ Ylin: <strong>C4</strong></small>
+    </button>
+
+    <button class="exercise-btn" onclick="playExercise('fifth')">
+        🎸 <strong>3. Heavy-Voimasointu</strong><br>
+        <small style="color: #ccc;">Sointu: <strong>D3 - A3 - D4</strong></small>
+    </button>
 </div>
 
 <script>
 let audioCtx;
-let targetFreq = 220.00; // A-nuotti (matalahko miesten laulualalle sopiva pohjasävel)
+let targetFreq = 164.81;
 
-function playTargetNote() {
+function playExercise(type) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
+    let targetName = document.getElementById('display-target-name');
+    let startNote = document.getElementById('display-start-note');
+    let endNote = document.getElementById('display-end-note');
+
+    if (type === 'base') {
+        targetFreq = 164.81; // E3
+        playChord([164.81, 246.94], 8);
+        targetName.innerText = "E3 (Pohjasävel)";
+        startNote.innerText = "E3";
+        endNote.innerText = "B3 (Harmonia)";
+    } else if (type === 'glide') {
+        targetFreq = 220.00; // A3
+        playGlide(130.81, 261.63, 6);
+        targetName.innerText = "C3 ➔ C4 Liuku";
+        startNote.innerText = "C3";
+        endNote.innerText = "C4";
+    } else if (type === 'fifth') {
+        targetFreq = 146.83; // D3
+        playChord([146.83, 220.00, 293.66], 10);
+        targetName.innerText = "D3 - A3 - D4 Sointu";
+        startNote.innerText = "D3";
+        endNote.innerText = "D4";
+    }
+}
+
+function playChord(freqs, duration) {
+    freqs.forEach(f => {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3 / freqs.length, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    });
+}
+
+function playGlide(startF, endF, duration) {
     let osc = audioCtx.createOscillator();
     let gain = audioCtx.createGain();
-    
-    let vol = parseFloat(document.getElementById('volume').value);
-    let dur = parseFloat(document.getElementById('duration').value);
-    
-    osc.type = 'triangle'; // Pehmeä, pianomainen ääni
-    osc.frequency.setValueAtTime(targetFreq, audioCtx.currentTime);
-    
-    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(startF, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(endF, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-    
     osc.start();
-    osc.stop(audioCtx.currentTime + dur);
+    osc.stop(audioCtx.currentTime + duration);
 }
 
 async function startListening() {
@@ -73,45 +142,46 @@ async function startListening() {
         source.connect(analyser);
 
         const buffer = new Float32Array(analyser.fftSize);
+        document.getElementById('voice-dot').style.display = 'block';
         
-        function checkPitch() {
+        function updateTuner() {
             analyser.getFloatTimeDomainData(buffer);
             let userFreq = autoCorrelate(buffer, audioCtx.sampleRate);
-            
-            let feedbackEl = document.getElementById('feedback');
+            let dot = document.getElementById('voice-dot');
             
             if (userFreq !== -1) {
-                let diff = userFreq - targetFreq;
+                let cents = 1200 * Math.log2(userFreq / targetFreq);
+                let positionPercent = 50 + (cents / 3);
                 
-                if (Math.abs(diff) < 5) {
-                    feedbackEl.innerText = "TÄYDELLINEN OSUMA! (Osuit säveleen)";
-                    feedbackEl.className = "match";
-                } else if (diff < 0) {
-                    feedbackEl.innerText = "Liian matala ääni – Nosta ylemmäs!";
-                    feedbackEl.className = "too-low";
+                if (positionPercent < 5) positionPercent = 5;
+                if (positionPercent > 95) positionPercent = 95;
+                
+                dot.style.left = positionPercent + "%";
+                
+                if (Math.abs(cents) < 25) {
+                    dot.style.background = "#4caf50";
+                    dot.style.boxShadow = "0 0 20px #4caf50";
                 } else {
-                    feedbackEl.innerText = "Liian korkea ääni – Laske alemmas!";
-                    feedbackEl.className = "too-high";
+                    dot.style.background = "#00e5ff";
+                    dot.style.boxShadow = "0 0 12px #00e5ff";
                 }
             }
-            requestAnimationFrame(checkPitch);
+            requestAnimationFrame(updateTuner);
         }
-        checkPitch();
+        updateTuner();
     } catch (err) {
-        alert("Mikrofonin käyttö estetty tai ei saada yhteyttä.");
+        alert("Mikrofoniyhteys epäonnistui.");
     }
 }
 
-// Yksinkertainen taajuuden tunnistusalgoritmi (Autocorrelation)
 function autoCorrelate(buf, sampleRate) {
     let SIZE = buf.length;
     let rms = 0;
     for (let i = 0; i < SIZE; i++) {
-        let val = buf[i];
-        rms += val * val;
+        let val = buf[i]; rms += val * val;
     }
     rms = Math.sqrt(rms / SIZE);
-    if (rms < 0.01) return -1; // Ei riittävästi ääntä / hiljaisuus
+    if (rms < 0.015) return -1;
 
     let r1 = 0, r2 = SIZE - 1, thres = 0.2;
     for (let i = 0; i < SIZE / 2; i++) {
@@ -120,27 +190,19 @@ function autoCorrelate(buf, sampleRate) {
     for (let i = 1; i < SIZE / 2; i++) {
         if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
     }
-
-    buf = buf.slice(r1, r2);
-    SIZE = buf.length;
-
+    buf = buf.slice(r1, r2); SIZE = buf.length;
     let c = new Array(SIZE).fill(0);
     for (let i = 0; i < SIZE; i++) {
         for (let j = 0; j < SIZE - i; j++) {
             c[i] = c[i] + buf[j] * buf[j + i];
         }
     }
-
     let d = 0; while (c[d] > c[d + 1]) d++;
     let maxval = -1, maxpos = -1;
     for (let i = d; i < SIZE; i++) {
-        if (c[i] > maxval) {
-            maxval = c[i];
-            maxpos = i;
-        }
+        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
     }
-    let T0 = maxpos;
-    return sampleRate / T0;
+    return sampleRate / maxpos;
 }
 </script>
 
