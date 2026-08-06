@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rentolaulu - Mukana 80–90-luvun hitit</title>
+    <title>Rentolaulu - Raportoinnilla ja Pärinöillä</title>
     <style>
         body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 10px; margin: 0; }
         .card { background: #1e1e1e; max-width: 650px; margin: 0 auto; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         button { background: #e50914; color: white; border: none; padding: 10px 14px; font-size: 14px; border-radius: 6px; cursor: pointer; margin: 4px; font-weight: bold; }
         button:hover { background: #b20710; }
         
+        .stats-panel { background: #262626; border: 1px solid #444; padding: 8px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-around; font-size: 13px; color: #ffca28; font-weight: bold; }
+        .report-btn { background: #0288d1; width: 100%; font-size: 14px; margin-top: 5px; }
+        .report-btn:hover { background: #01579b; }
+
         .controls-panel { background: #262626; border: 1px solid #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-around; flex-wrap: wrap; }
         .control-group { margin: 5px 10px; text-align: left; }
         .control-group label { font-size: 13px; color: #00e5ff; display: block; font-weight: bold; margin-bottom: 3px; }
@@ -24,15 +28,14 @@
         .exercise-btn:hover { background: #3a3a3a; border-color: #00e5ff; }
         .exercise-btn strong { display: block; font-size: 12px; }
         
-        /* Eri värit kategorioille */
+        .btn-warmup { border-color: #00bcd4; }
+        .btn-warmup strong { color: #80deea; }
         .btn-retro { border-color: #ff9800; }
         .btn-retro strong { color: #ffb74d; }
         .btn-song { border-color: #4caf50; }
         .btn-song strong { color: #81c784; }
         .btn-classic { border-color: #757575; }
         .btn-classic strong { color: #bdbdbd; }
-        .btn-new { border-color: #ab47bc; }
-        .btn-new strong { color: #ce93d8; }
 
         canvas { background: #181818; border: 2px solid #333; border-radius: 10px; width: 100%; height: 230px; display: block; margin: 10px 0; }
     </style>
@@ -40,11 +43,17 @@
 <body>
 
 <div class="card">
-    <h2>Rentolaulu 🎤 (Mukana 80–90-luku)</h2>
+    <h2>Rentolaulu 🎤 (Valmennusyhteys)</h2>
     
-    <button onclick="startListening()" style="background: #2e7d32; width: 100%; font-size: 16px; margin-bottom: 10px;">🎤 Käynnistä Mikrofoni & Ääni</button>
+    <div class="stats-panel">
+        <div>🔥 Päivä-striikki: <span id="streakCount">0</span> päivää</div>
+        <div>🏆 Tehdyt treenit: <span id="totalCount">0</span> kpl</div>
+    </div>
 
-    <div class="toggles-panel">
+    <button onclick="startListening()" style="background: #2e7d32; width: 100%; font-size: 16px; margin-bottom: 5px;">🎤 Käynnistä Mikrofoni & Ääni</button>
+    <button onclick="copySessionReport()" class="report-btn">📋 Kopioi treeniraportti tekoälyvalmentajalle</button>
+
+    <div class="toggles-panel" style="margin-top: 10px;">
         <label><input type="checkbox" id="voiceToggle" checked> 🔊 Tekoälytsemppari</label>
         <label><input type="checkbox" id="guideVoiceToggle" checked> 🎵 Apulaulu (Opaste-ääni)</label>
     </div>
@@ -63,9 +72,7 @@
     <canvas id="gameCanvas" width="600" height="230"></canvas>
 
     <h3>Valitse laulettavaa:</h3>
-    <div class="exercise-container" id="containerBox">
-        <!-- Generoidaan dynaamisesti ryhmiin -->
-    </div>
+    <div class="exercise-container" id="containerBox"></div>
 </div>
 
 <script>
@@ -76,12 +83,67 @@ const ctx = canvas.getContext("2d");
 let lastSpokenTime = 0;
 let lastPhraseIndex = -1;
 
+// Session seuranta tekoälyraporttia varten
+let sessionLog = {
+    startTime: new Date(),
+    completedExercises: [],
+    totalHits: 0
+};
+
+let stats = JSON.parse(localStorage.getItem('rentolaulu_stats')) || { total: 0, streak: 0, lastDate: "" };
+updateStatsDisplay();
+
+function updateStatsDisplay() {
+    document.getElementById("totalCount").innerText = stats.total;
+    document.getElementById("streakCount").innerText = stats.streak;
+}
+
+function recordExerciseCompleted(title) {
+    let today = new Date().toISOString().slice(0, 10);
+    stats.total += 1;
+    sessionLog.completedExercises.push(title);
+
+    if (stats.lastDate !== today) {
+        let yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        let yStr = yesterday.toISOString().slice(0, 10);
+
+        if (stats.lastDate === yStr) {
+            stats.streak += 1;
+        } else {
+            stats.streak = 1;
+        }
+        stats.lastDate = today;
+    }
+    
+    localStorage.setItem('rentolaulu_stats', JSON.stringify(stats));
+    updateStatsDisplay();
+}
+
+function copySessionReport() {
+    let durationMins = Math.round((new Date() - sessionLog.startTime) / 1000 / 60);
+    let exercisesList = sessionLog.completedExercises.length > 0 
+        ? sessionLog.completedExercises.join(", ") 
+        : "Ei vielä loppuun asti suoritettuja treenejä tällä sessiolla.";
+
+    let reportText = `--- 🎤 RENTOLAULU TREENIRAPORTTI ---
+⏱ Treenin kesto: ${durationMins} min
+🔥 Päivä-striikki: ${stats.streak} päivää
+🏆 Tehdyt harjoitukset yhteensä: ${stats.total} kpl
+✅ Tällä sessiolla treenattu: ${exercisesList}
+🎯 Osumia heitetty: ${sessionLog.totalHits} kpl
+---------------------------------------`;
+
+    navigator.clipboard.writeText(reportText).then(() => {
+        alert("Raportti kopioitu leikepöydälle! Liimaa se keskusteluun tekoälyvalmentajalle.");
+    }).catch(err => {
+        alert("Kopiointi epäonnistui. Voit kirjoittaa havainnot suoraan chattiin!");
+    });
+}
+
 const praisePhrases = [
     "Sieltä napsahti!", "Puhdas osuma!", "No niin, juuri noin!", "Ääni kohdallaan!",
-    "Nyt osui tontille!", "Aivan ytimessä!", "Aika jäätävän tarkka!", "Kulkee kuin ajatus!",
-    "No sehän osui heti!", "Komeasti soi!", "Jatka samaa rataa!", "Siinä oli tyyliä!",
-    "Tarkkaa työtä!", "Nyt mentiin maaliin!", "Hyvä veto!", "Osuu ja uppoaa!",
-    "Hienosti hallussa!", "Sehän helähti kauniisti!"
+    "Nyt osui tontille!", "Aivan ytimessä!", "Aika jäätävän tarkka!", "Kulkee kuin ajatus!"
 ];
 
 function speak(text) {
@@ -118,6 +180,17 @@ const noteYMap = {
 
 const categories = [
     {
+        title: "💨 Äänenlämmittelyt & Pärinät (Prrr / Brrr / Siren)",
+        type: "warmup",
+        items: [
+            { title: "Huulipärinä (Prrr) - Asteikko", seq: ["C3", "D3", "E3", "F3", "G3", "F3", "E3", "D3", "C3"] },
+            { title: "Kielipärinä (Brrr) - Viisikko", seq: ["C3", "E3", "G3", "E3", "C3"] },
+            { title: "Sireeni-liuku (Uu-oo) Matalalta", seq: ["E2", "G2", "B2", "E3", "G3"], isHold: true },
+            { title: "Mmm-hyräily (Palleatuki)", seq: ["A2", "C3", "E3", "C3", "A2"] },
+            { title: "Staccato nykäykset (Ha-ha-ha)", seq: ["C3", "C3", "E3", "E3", "G3", "G3", "C3"] }
+        ]
+    },
+    {
         title: "📻 80–90-luvun hitit & teemat",
         type: "retro",
         items: [
@@ -140,7 +213,7 @@ const categories = [
         ]
     },
     {
-        title: "🔄 Perinteiset (varmat lämmittelyt)",
+        title: "🔄 Perinteiset laulutreenit",
         type: "classic",
         items: [
             { title: "Perusasteikko ylös", seq: ["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C4"] },
@@ -148,17 +221,6 @@ const categories = [
             { title: "Pitkä matala hyräily", seq: ["E2"], isHold: true },
             { title: "Pitkä keskialueen ääni", seq: ["A2"], isHold: true },
             { title: "Perusviisikko", seq: ["C3", "D3", "E3", "D3", "C3"] }
-        ]
-    },
-    {
-        title: "🚀 Uudet & Vaihtelevat haasteet",
-        type: "new",
-        items: [
-            { title: "Iso intervallihyppy", seq: ["C3", "G3", "C3", "A3", "C4"] },
-            { title: "Siksak-aalto", seq: ["C3", "E3", "D3", "F3", "E3", "G3"] },
-            { title: "Nopea nykäys", seq: ["C3", "C#3", "D3", "D#3", "E3"] },
-            { title: "Pomppiva sointu", seq: ["C3", "G3", "E3", "C4", "G3"] },
-            { title: "Korkea pito", seq: ["C4"], isHold: true }
         ]
     }
 ];
@@ -187,6 +249,7 @@ categories.forEach(cat => {
 
 let activeNotes = [];
 let isRunning = false;
+let exerciseTimer = null;
 
 function updateControlLabels() {
     let spd = document.getElementById("speedSlider").value;
@@ -225,10 +288,12 @@ function startExercise(ex) {
 
     ex.seq.forEach((note, i) => {
         let soundDuration = (baseWidth / (speed * 60)) + 0.3;
+        let noteX = startX + (i * (baseWidth + gap));
+
         activeNotes.push({
             name: note,
             freq: noteFreqs[note] || 130.81,
-            x: startX + (i * (baseWidth + gap)),
+            x: noteX,
             y: noteYMap[note] || 120,
             width: baseWidth,
             hit: false,
@@ -237,6 +302,15 @@ function startExercise(ex) {
     });
 
     isRunning = true;
+
+    if (exerciseTimer) clearTimeout(exerciseTimer);
+    let completionTime = ((startX + (ex.seq.length * (baseWidth + gap))) / speed) * 18;
+    exerciseTimer = setTimeout(() => {
+        if (isRunning) {
+            recordExerciseCompleted(ex.title);
+        }
+    }, completionTime);
+
     requestAnimationFrame(gameLoop);
 }
 
@@ -279,6 +353,7 @@ function gameLoop() {
         if (userPitch && Math.abs(1200 * Math.log2(userPitch / n.freq)) < 40) {
             if (n.x <= hitX && (n.x + n.width) >= hitX) {
                 isUserMatching = true;
+                sessionLog.totalHits += 1;
                 
                 if (now - lastSpokenTime > 4500) {
                     speak(getRandomPraise());
@@ -378,3 +453,4 @@ function autoCorrelate(buf, sampleRate) {
 
 </body>
 </html>
+
