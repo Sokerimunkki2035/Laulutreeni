@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rentolaulu - Raportoinnilla ja Pärinöillä</title>
+    <title>Rentolaulu - Mukana Äänitallennus</title>
     <style>
         body { font-family: sans-serif; background: #121212; color: #fff; text-align: center; padding: 10px; margin: 0; }
         .card { background: #1e1e1e; max-width: 650px; margin: 0 auto; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
@@ -13,6 +13,9 @@
         .stats-panel { background: #262626; border: 1px solid #444; padding: 8px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-around; font-size: 13px; color: #ffca28; font-weight: bold; }
         .report-btn { background: #0288d1; width: 100%; font-size: 14px; margin-top: 5px; }
         .report-btn:hover { background: #01579b; }
+
+        .recorder-panel { background: #2a2a2a; border: 1px solid #555; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
+        audio { margin-top: 8px; width: 100%; height: 35px; }
 
         .controls-panel { background: #262626; border: 1px solid #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-around; flex-wrap: wrap; }
         .control-group { margin: 5px 10px; text-align: left; }
@@ -43,7 +46,7 @@
 <body>
 
 <div class="card">
-    <h2>Rentolaulu 🎤 (Valmennusyhteys)</h2>
+    <h2>Rentolaulu 🎤 (Mukana Äänitallennus)</h2>
     
     <div class="stats-panel">
         <div>🔥 Päivä-striikki: <span id="streakCount">0</span> päivää</div>
@@ -51,6 +54,15 @@
     </div>
 
     <button onclick="startListening()" style="background: #2e7d32; width: 100%; font-size: 16px; margin-bottom: 5px;">🎤 Käynnistä Mikrofoni & Ääni</button>
+    
+    <!-- ÄÄNIENTALLENNUSOSIO -->
+    <div class="recorder-panel">
+        <div style="font-size: 13px; margin-bottom: 5px; color: #ffca28; font-weight: bold;">🎙️ Oma Äänitallennin:</div>
+        <button id="recordBtn" onclick="toggleRecording()" style="background: #d32f2f;">🔴 Aloita Nauhoitus</button>
+        <div id="recordingStatus" style="font-size: 11px; color: #aaa; margin-top: 4px;">Ei nauhoiteta</div>
+        <audio id="audioPlayer" controls style="display:none;"></audio>
+    </div>
+
     <button onclick="copySessionReport()" class="report-btn">📋 Kopioi treeniraportti tekoälyvalmentajalle</button>
 
     <div class="toggles-panel" style="margin-top: 10px;">
@@ -78,12 +90,16 @@
 <script>
 let audioCtx;
 let userPitch = null;
+let mediaStream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 let lastSpokenTime = 0;
 let lastPhraseIndex = -1;
 
-// Session seuranta tekoälyraporttia varten
 let sessionLog = {
     startTime: new Date(),
     completedExercises: [],
@@ -399,8 +415,8 @@ async function startListening() {
     speak("Mikrofoni valmiina. Valitse haluamasi treeni tai biisi alta!");
 
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = audioCtx.createMediaStreamSource(stream);
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = audioCtx.createMediaStreamSource(mediaStream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 2048;
         source.connect(analyser);
@@ -416,6 +432,44 @@ async function startListening() {
         processAudio();
     } catch (err) {
         alert("Mikrofoniyhteys epäonnistui.");
+    }
+}
+
+function toggleRecording() {
+    let btn = document.getElementById("recordBtn");
+    let status = document.getElementById("recordingStatus");
+    let player = document.getElementById("audioPlayer");
+
+    if (!isRecording) {
+        if (!mediaStream) {
+            alert("Käynnistä ensin mikrofoni yläpuolelta!");
+            return;
+        }
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(mediaStream);
+        
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            let blob = new Blob(recordedChunks, { type: 'audio/webm' });
+            let audioURL = URL.createObjectURL(blob);
+            player.src = audioURL;
+            player.style.display = "block";
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        btn.innerText = "⏹️ Pysäytä Tallennus";
+        btn.style.background = "#ff9800";
+        status.innerText = "🔴 Nauhoitetaan laulua...";
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.innerText = "🔴 Uusi Nauhoitus";
+        btn.style.background = "#d32f2f";
+        status.innerText = "✅ Nauhoitus valmis! Kuuntele alta:";
     }
 }
 
@@ -453,4 +507,3 @@ function autoCorrelate(buf, sampleRate) {
 
 </body>
 </html>
-
