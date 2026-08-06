@@ -39,6 +39,8 @@
         .btn-song strong { color: #81c784; }
         .btn-classic { border-color: #757575; }
         .btn-classic strong { color: #bdbdbd; }
+        .btn-baritone { border-color: #9c27b0; }
+        .btn-baritone strong { color: #ce93d8; }
 
         canvas { background: #181818; border: 2px solid #333; border-radius: 10px; width: 100%; height: 230px; display: block; margin: 10px 0; }
     </style>
@@ -94,6 +96,7 @@ let mediaStream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
+let lastFrameTime = null;
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -103,7 +106,7 @@ let lastPhraseIndex = -1;
 let sessionLog = {
     startTime: new Date(),
     completedExercises: [],
-    totalHits: 0
+    totalHoldSeconds: 0
 };
 
 let stats = JSON.parse(localStorage.getItem('rentolaulu_stats')) || { total: 0, streak: 0, lastDate: "" };
@@ -147,7 +150,7 @@ function copySessionReport() {
 🔥 Päivä-striikki: ${stats.streak} päivää
 🏆 Tehdyt harjoitukset yhteensä: ${stats.total} kpl
 ✅ Tällä sessiolla treenattu: ${exercisesList}
-🎯 Osumia heitetty: ${sessionLog.totalHits} kpl
+🎯 Osuma-aika yhteensä (pito-aika): ${sessionLog.totalHoldSeconds.toFixed(1)} sekuntia
 ---------------------------------------`;
 
     navigator.clipboard.writeText(reportText).then(() => {
@@ -204,6 +207,72 @@ const categories = [
             { title: "Sireeni-liuku (Uu-oo) Matalalta", seq: ["E2", "G2", "B2", "E3", "G3"], isHold: true },
             { title: "Mmm-hyräily (Palleatuki)", seq: ["A2", "C3", "E3", "C3", "A2"] },
             { title: "Staccato nykäykset (Ha-ha-ha)", seq: ["C3", "C3", "E3", "E3", "G3", "G3", "C3"] }
+        ]
+    },
+    {
+        title: "🧘‍♂️ Matalat Harmoniavenytykset (Baritoni)",
+        type: "baritone",
+        items: [
+            {
+                title: "Aaa-venytys: Lyhyt sarja (E2→G2→A2→C3→E3)",
+                timedSeq: [
+                    { type: "note", note: "E2", dur: 6 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "G2", dur: 6 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "A2", dur: 6 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "C3", dur: 6 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "E3", dur: 6 }
+                ]
+            },
+            {
+                title: "Aaa-harmonia: Nouseva (matalalta korkealle)",
+                timedSeq: [
+                    { type: "note", note: "E2", dur: 10 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "G2", dur: 12 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "A2", dur: 12 },
+                    { type: "gap", dur: 5 },
+                    { type: "note", note: "C3", dur: 14 },
+                    { type: "gap", dur: 5 },
+                    { type: "note", note: "E3", dur: 15 }
+                ]
+            },
+            {
+                title: "Ng-harmonia: Laskeva (korkealta matalalle)",
+                timedSeq: [
+                    { type: "note", note: "E3", dur: 15 },
+                    { type: "gap", dur: 5 },
+                    { type: "note", note: "C3", dur: 14 },
+                    { type: "gap", dur: 5 },
+                    { type: "note", note: "A2", dur: 12 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "G2", dur: 12 },
+                    { type: "gap", dur: 4 },
+                    { type: "note", note: "E2", dur: 10 }
+                ]
+            },
+            {
+                title: "Aaa-ultravenytys A2 (45 sek)",
+                timedSeq: [
+                    { type: "note", note: "A2", dur: 45 }
+                ]
+            },
+            {
+                title: "Ng-ultravenytys E2 (60 sek)",
+                timedSeq: [
+                    { type: "note", note: "E2", dur: 60 }
+                ]
+            },
+            {
+                title: "Aaa-ultravenytys C3 (30 sek)",
+                timedSeq: [
+                    { type: "note", note: "C3", dur: 30 }
+                ]
+            }
         ]
     },
     {
@@ -291,36 +360,72 @@ function playGuideNote(freq, duration) {
 
 function startExercise(ex) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     speak(`Valittu: ${ex.title}`);
     activeNotes = [];
-    
+
     let speed = parseFloat(document.getElementById("speedSlider").value);
     let lengthMult = parseInt(document.getElementById("lengthSlider").value);
-    
-    let baseWidth = ex.isHold ? (250 * lengthMult) : (50 * lengthMult);
-    let gap = 30 * speed;
     let startX = 600;
+    let totalPx = 0;
 
-    ex.seq.forEach((note, i) => {
-        let soundDuration = (baseWidth / (speed * 60)) + 0.3;
-        let noteX = startX + (i * (baseWidth + gap));
+    if (ex.timedSeq) {
+        // Aikaperusteinen moottori pitkille harmoniavenytyksille: sekunnit -> pikselit nykyisellä liukunopeudella
+        let pxPerSec = speed * 60;
+        let cursorX = startX;
 
-        activeNotes.push({
-            name: note,
-            freq: noteFreqs[note] || 130.81,
-            x: noteX,
-            y: noteYMap[note] || 120,
-            width: baseWidth,
-            hit: false,
-            action: () => playGuideNote(noteFreqs[note] || 130.81, soundDuration)
+        ex.timedSeq.forEach(step => {
+            if (step.type === "gap") {
+                let gapWidth = step.dur * pxPerSec;
+                activeNotes.push({
+                    name: "", freq: null, x: cursorX, y: 115, width: gapWidth,
+                    hit: true, isGap: true, action: () => {}
+                });
+                cursorX += gapWidth;
+            } else {
+                let noteWidth = step.dur * pxPerSec;
+                let note = step.note;
+                activeNotes.push({
+                    name: note,
+                    freq: noteFreqs[note] || 130.81,
+                    x: cursorX,
+                    y: noteYMap[note] || 120,
+                    width: noteWidth,
+                    hit: false,
+                    holdSeconds: 0,
+                    action: () => playGuideNote(noteFreqs[note] || 130.81, Math.min(step.dur, 1.2))
+                });
+                cursorX += noteWidth;
+            }
         });
-    });
+        totalPx = cursorX - startX;
+    } else {
+        let baseWidth = ex.isHold ? (250 * lengthMult) : (50 * lengthMult);
+        let gap = 30 * speed;
+
+        ex.seq.forEach((note, i) => {
+            let soundDuration = (baseWidth / (speed * 60)) + 0.3;
+            let noteX = startX + (i * (baseWidth + gap));
+
+            activeNotes.push({
+                name: note,
+                freq: noteFreqs[note] || 130.81,
+                x: noteX,
+                y: noteYMap[note] || 120,
+                width: baseWidth,
+                hit: false,
+                holdSeconds: 0,
+                action: () => playGuideNote(noteFreqs[note] || 130.81, soundDuration)
+            });
+        });
+        totalPx = ex.seq.length * (baseWidth + gap);
+    }
 
     isRunning = true;
+    lastFrameTime = null;
 
     if (exerciseTimer) clearTimeout(exerciseTimer);
-    let completionTime = ((startX + (ex.seq.length * (baseWidth + gap))) / speed) * 18;
+    let completionTime = ((startX + totalPx) / speed) * 18;
     exerciseTimer = setTimeout(() => {
         if (isRunning) {
             recordExerciseCompleted(ex.title);
@@ -334,6 +439,11 @@ function gameLoop() {
     if (!isRunning) return;
 
     let speed = parseFloat(document.getElementById("speedSlider").value);
+
+    let now = performance.now();
+    if (lastFrameTime === null) lastFrameTime = now;
+    let deltaSec = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
 
     ctx.fillStyle = "#181818";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -355,10 +465,20 @@ function gameLoop() {
     ctx.lineTo(hitX, canvas.height);
     ctx.stroke();
 
-    let now = Date.now();
+    let nowTs = Date.now();
 
     activeNotes.forEach(n => {
         n.x -= speed;
+
+        if (n.isGap) {
+            // Hengitystauko: ei nuottilaatikkoa, pelkkä pehmeä vihje kun tauko on näkyvissä
+            if (n.x + n.width > hitX - 60 && n.x < hitX + 120) {
+                ctx.fillStyle = "rgba(0,229,255,0.4)";
+                ctx.font = "12px sans-serif";
+                ctx.fillText("💨 Hengitä...", Math.max(n.x + 4, 4), 118);
+            }
+            return;
+        }
 
         if (Math.abs(n.x - hitX) < (speed + 1) && !n.hit) {
             n.action();
@@ -366,144 +486,4 @@ function gameLoop() {
         }
 
         let isUserMatching = false;
-        if (userPitch && Math.abs(1200 * Math.log2(userPitch / n.freq)) < 40) {
-            if (n.x <= hitX && (n.x + n.width) >= hitX) {
-                isUserMatching = true;
-                sessionLog.totalHits += 1;
-                
-                if (now - lastSpokenTime > 4500) {
-                    speak(getRandomPraise());
-                    lastSpokenTime = now;
-                }
-            }
-        }
-
-        ctx.fillStyle = isUserMatching ? "#4caf50" : "#00e5ff";
-        ctx.shadowBlur = isUserMatching ? 15 : 0;
-        ctx.shadowColor = "#4caf50";
-
-        ctx.beginPath();
-        ctx.roundRect(n.x, n.y - 8, n.width, 16, 4);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        ctx.fillStyle = "#000";
-        ctx.font = "bold 10px sans-serif";
-        ctx.fillText(n.name, n.x + 4, n.y + 3);
-    });
-
-    if (userPitch) {
-        let userY = 190 - ((Math.log2(userPitch / 110.00)) * 75);
-        if (userY < 5) userY = 5;
-        if (userY > 225) userY = 225;
-
-        ctx.fillStyle = "#ffca28";
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = "#ffca28";
-        ctx.beginPath();
-        ctx.arc(hitX, userY, 9, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-    }
-
-    requestAnimationFrame(gameLoop);
-}
-
-async function startListening() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    speak("Mikrofoni valmiina. Valitse haluamasi treeni tai biisi alta!");
-
-    try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const source = audioCtx.createMediaStreamSource(mediaStream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 2048;
-        source.connect(analyser);
-
-        const buffer = new Float32Array(analyser.fftSize);
-        
-        function processAudio() {
-            analyser.getFloatTimeDomainData(buffer);
-            let freq = autoCorrelate(buffer, audioCtx.sampleRate);
-            userPitch = (freq !== -1) ? freq : null;
-            requestAnimationFrame(processAudio);
-        }
-        processAudio();
-    } catch (err) {
-        alert("Mikrofoniyhteys epäonnistui.");
-    }
-}
-
-function toggleRecording() {
-    let btn = document.getElementById("recordBtn");
-    let status = document.getElementById("recordingStatus");
-    let player = document.getElementById("audioPlayer");
-
-    if (!isRecording) {
-        if (!mediaStream) {
-            alert("Käynnistä ensin mikrofoni yläpuolelta!");
-            return;
-        }
-        recordedChunks = [];
-        mediaRecorder = new MediaRecorder(mediaStream);
-        
-        mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) recordedChunks.push(e.data);
-        };
-
-        mediaRecorder.onstop = () => {
-            let blob = new Blob(recordedChunks, { type: 'audio/webm' });
-            let audioURL = URL.createObjectURL(blob);
-            player.src = audioURL;
-            player.style.display = "block";
-        };
-
-        mediaRecorder.start();
-        isRecording = true;
-        btn.innerText = "⏹️ Pysäytä Tallennus";
-        btn.style.background = "#ff9800";
-        status.innerText = "🔴 Nauhoitetaan laulua...";
-    } else {
-        mediaRecorder.stop();
-        isRecording = false;
-        btn.innerText = "🔴 Uusi Nauhoitus";
-        btn.style.background = "#d32f2f";
-        status.innerText = "✅ Nauhoitus valmis! Kuuntele alta:";
-    }
-}
-
-function autoCorrelate(buf, sampleRate) {
-    let SIZE = buf.length;
-    let rms = 0;
-    for (let i = 0; i < SIZE; i++) {
-        let val = buf[i]; rms += val * val;
-    }
-    rms = Math.sqrt(rms / SIZE);
-    if (rms < 0.015) return -1;
-
-    let r1 = 0, r2 = SIZE - 1, thres = 0.2;
-    for (let i = 0; i < SIZE / 2; i++) {
-        if (Math.abs(buf[i]) < thres) { r1 = i; break; }
-    }
-    for (let i = 1; i < SIZE / 2; i++) {
-        if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-    }
-    buf = buf.slice(r1, r2); SIZE = buf.length;
-    let c = new Array(SIZE).fill(0);
-    for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE - i; j++) {
-            c[i] = c[i] + buf[j] * buf[j + i];
-        }
-    }
-    let d = 0; while (c[d] > c[d + 1]) d++;
-    let maxval = -1, maxpos = -1;
-    for (let i = d; i < SIZE; i++) {
-        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
-    }
-    return sampleRate / maxpos;
-}
-</script>
-
-</body>
-</html>
+        if (userPit
